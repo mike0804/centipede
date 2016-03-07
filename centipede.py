@@ -82,7 +82,7 @@ class Centipede:
             print msg
 
         if self.__debug_level >= level:
-            log = ('    ' * indent) + time.strftime('%Y-%m-%d %H:%M:%S') + ' => ' + msg
+            log = ('    ' * indent) + time.strftime('%Y-%m-%d %H:%M:%S') + ' => ' + msg + '\n'
             self.__logs.append(log)
         
         if len(self.__logs) >= 20:
@@ -99,7 +99,7 @@ class Centipede:
 
         try:
             with open(self.jobFile, 'r') as fin:
-                data = fin.read().splitlines(True)
+                data = fin.read().splitlines()
 
             if data:
                 job = data[0]
@@ -166,7 +166,7 @@ class Centipede:
                 f = self.current_job.module.http_rules['stop']
                 if not hasattr(f, '__call__'):
                     raise ModuleError("Definition error: Stop condition must be a function.")
-                stop = f(tree)
+                stop = f(root)
             else:
                 stop = True
 
@@ -225,7 +225,7 @@ class Centipede:
                     else:
                         job_url = e.attrib['href']
 
-                    jlist.append('\t'.join([job_url, nj['module']]))
+                    jlist.append('\t'.join([job_url, nj['module']]) + '\n')
 
                     self.__log(3, 'Module: %s, Url: %s' % (nj['module'], job_url), indent=1)
 
