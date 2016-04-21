@@ -123,7 +123,7 @@ class Centipede:
                 self.__log(1, 'Job queue is empty.')
                 return False
         except (JobError, ModuleError) as e:
-            self.__log(1, type(e) + ': ' + e.msg)
+            self.__log(1, type(e).__name__ + ': ' + e.msg)
             return False
 
 
@@ -165,7 +165,7 @@ class Centipede:
             if self.current_job.module.http_rules.has_key('stop'):
                 f = self.current_job.module.http_rules['stop']
                 if not hasattr(f, '__call__'):
-                    raise ModuleError("Definition error: Stop condition must be a function.")
+                    raise ModuleError("Stop condition must be a function.")
                 stop = f(root)
             else:
                 stop = True
@@ -290,22 +290,11 @@ class Centipede:
         return dlist
 
     def loadModule(self, module):
-        if module == "stackexchange.unix.questions":
-            import stackexchange.unix.questions
-            m    = stackexchange.unix.questions
-        elif module == "stackexchange.unix.qna":
-            import stackexchange.unix.qna
-            m    = stackexchange.unix.qna
-        elif module == "linuxquestions.list":
-            import linuxquestions.list
-            m    = linuxquestions.list
-        elif module == "linuxquestions.thread":
-            import linuxquestions.thread
-            m    = linuxquestions.thread
-        else:
-            raise ModuleError('Module %s is not supported.' % module)
+        import importlib
+        try:
+            m = importlib.import_module('module.%s' % module)
+        except (ImportError) as e:
+            raise ModuleError('No module named %s.' % module)
 
         return m
-
-
 
