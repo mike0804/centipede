@@ -89,6 +89,6 @@ elements = {
 
 new_jobs = [{
     'path'  : '//*[@id="threadbits_forum_4"]/tr/td[3]/div[1]/a[last()]',
-    'module': 'linuxquestions.thread',
+    'module': 'linuxquestions_thread',
     'prefix': 'http://www.linuxquestions.org',
 }]

@@ -88,6 +88,6 @@ elements = {
 
 new_jobs = [{
     'path'  : '//div[@id="questions"]/div[@class="question-summary"]/div[2]/h3/a',
-    'module': 'stackexchange.unix.qna',
+    'module': 'unix_stackexchange_qna',
     'prefix': 'http://unix.stackexchange.com',
 }]
