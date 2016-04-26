@@ -29,6 +29,7 @@ class Centipede:
     __debug = False
     __debug_level = 1
     __log_level = 2
+    __dir = 'centipede_data'
 
     def __init__(self, fname, **kwargs):
 
@@ -66,6 +67,8 @@ class Centipede:
                 self.__debug_level = int(v)
             elif k == 'log_level':
                 self.__log_level = int(v)
+            elif k == 'dir':
+                self.__dir = str(v)
             else:
                 continue    # just ignore the rest.
 
@@ -198,13 +201,12 @@ class Centipede:
     def dumpData(self, dlist):
         self.__log(1, 'Job done, dumping the data.')
 
-        dir = 'centipede_data'
         fname = self.current_job.url.replace('http://', '').replace('/', '_')
 
-        if not os.path.exists(dir):
-            os.makedirs(dir)
+        if not os.path.exists(self.__dir):
+            os.makedirs(self.__dir)
 
-        fpath = dir + '/' + fname + '.json'
+        fpath = self.__dir + '/' + fname + '.json'
 
         with open(fpath, 'w') as fout:
             json.dump(dlist, fout)
