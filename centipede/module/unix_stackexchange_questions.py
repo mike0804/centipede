@@ -16,10 +16,6 @@
     
 http_rules = {    
     'method'  : 'GET',    
-    'pagesize': {
-        'key'   : 'pagesize', 
-        'value' : 50,
-    },
     'page' : {
         'key'   : 'page',
         'value' : 1,
@@ -30,6 +26,7 @@ http_rules = {
     
     'params' : {
         'sorted': 'newest',
+        'pagesize': 50,
     }
 }
 
