@@ -104,9 +104,9 @@ class Centipede:
                     time = time.strftime('%Y-%m-%d %H:%M:%S'),
                     message = msg,
                   )
-            self._logs.append(log)
-
-        self._logger.write(log)
+            self._logger.write(log)
+            
+            # self._logs.append(log)
 
         # if len(self._logs) >= 20:
             # self._dump_logs()
@@ -153,13 +153,15 @@ class Centipede:
                     raise JobError(JobError.INVALID_FORMAT, job)
                 else:
                     url, module_name = splits[-2:]
-                    # print module
+                    # print module_name, url
 
                     j = CentipedeJob()
                     j.url = url
                     j.module = self._load_module(module_name)
 
                     self.current_job = j
+                    
+                    # print j.url, j.module
 
                     self._log(1, 'module: {module}, URL: {url}'.format(
                                    url = url,
@@ -183,7 +185,7 @@ class Centipede:
         stop = False
 
         headers = {
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-cache',
           'User-Agent': self._user_agent,
           'DNT': 1,
         }
@@ -199,7 +201,6 @@ class Centipede:
 
         while (not stop):
             url, html_source = self._send_request(
-                                 self,
                                  http_rules.get('method', 'GET'),
                                  params,
                                  headers
@@ -346,7 +347,7 @@ class Centipede:
                     continue
 
                 if info.has_key('function'):
-                    v = map(info['function'], ee]
+                    v = map(info['function'], ee)
                 elif info.has_key('attrib'):
                     v = self.get_elements_attrib(ee, info['attrib'])
                 else:
@@ -386,8 +387,11 @@ class Centipede:
         try:
             import importlib
             m = importlib.import_module(
-                  '.module.{name}'.format(name=module_name)
+                  'centipede.module.{name}'.format(name=module_name)
                 )
+            
+            # print m
+
         except ImportError as e:
             raise ModuleError(ModuleError.MODULE_NOT_FOUND, module_name)
 
