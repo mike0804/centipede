@@ -46,7 +46,7 @@ def main(argv = None):
              "help",            # -h
             ]
 
-        opts, args = getopt.getopt(argv, "o:f:h", l)
+        opts, args = getopt.getopt(argv, "o:f:hc", l)
     except getopt.GetoptError as e:
         # print help information and exit:
         # print str(e)
@@ -112,22 +112,22 @@ def main(argv = None):
               'gztar', \
               tmp_dir, task
             )
+            shutil.rmtree(task_dir)
         else:
             shutil.move(task_dir, output_dir)
 
-        shutil.rmtree(task_dir)
-
-    except Centipede.Error as e:
-        # do something
-        pass
+    except centipede.Error as e:
+        print str(e)
+        sys.exit(2)
     except OSError as e:
         print str(e)
         sys.exit(2)
     except Exception as e:
-        print str(e)
+        raise
+        sys.exit(2)
     finally:
         cl.close()
-        sys.exit(2)
+        # sys.exit(2)
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

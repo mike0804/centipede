@@ -4,7 +4,8 @@ import requests
 import os
 import sys
 import time
-import re, json
+import re
+import json
 import urlparse
 from lxml import html, etree
 
@@ -79,7 +80,7 @@ class Centipede:
                                 time = time.strftime('%Y%m%d%H%M%S')
                             ))
 
-        self._logger = open(self._logfile, 'wb')
+        self._logger = open(self._logfile, 'a+')
 
         '''
         Setup working ground.
@@ -141,14 +142,15 @@ class Centipede:
     def next_job(self):
         self._log(1, 'Finding next job.')
 
-        try:
-            with open(self.job_file, 'r') as fin:
-                jobs = fin.read().splitlines()
+        with open(self.job_file, 'r') as fin:
+            jobs = fin.read().splitlines()
 
-            if jobs:
-                job = jobs.pop(0)
+        while jobs:
+            job = jobs.pop(0)
 
-                splits = job.strip().split("\t")
+            splits = job.strip().split("\t")
+            
+            try:
                 if len(splits) < 2:
                     raise JobError(JobError.INVALID_FORMAT, job)
                 else:
@@ -169,14 +171,18 @@ class Centipede:
                               ))
 
                     return True
+            
+            except (JobError, ModuleError) as e:
+                self._log(1, '[{error_type}] {msg}'.format(
+                               error_type = type(e).__name__,
+                               msg = e.msg
+                             ))
+                continue
 
-            else:
-                self._log(1, 'No more jobs.')
-                return False
+        self._log(1, 'No more jobs.')
+        return False
 
-        except (JobError, ModuleError) as e:
-            self._log(1, type(e).__name__ + ': ' + e.msg)
-            return False
+        
 
     def do_job(self):
         self._log(1, 'Job started.')
@@ -283,11 +289,11 @@ class Centipede:
         with open(fpath, 'w') as fout:
             json.dump(data, fout)
 
-        self._log(1, '%d records are dumped to %s' % (len(data), fpath))
+        self._log(1, "%d records are dumped to '%s'" % (len(data), fpath))
 
     def dump_new_jobs(self, root):
         if hasattr(self.current_job.module, 'new_jobs'):
-            self._log(2, 'Finding new jobs:')
+            self._log(2, 'Adding new jobs:')
 
             jobs = list()
             for nj in self.current_job.module.new_jobs:
@@ -336,7 +342,7 @@ class Centipede:
             d['timestamp'] = self._last_request_time
 
             for key, info in module.elements['attributes'].iteritems():
-                self._log(3, '[{key}] Info: {info}'.format(
+                self._log(3, '[{key}] info: {info}'.format(
                                key = key,
                                info = str(info)
                              ), indent=1)
@@ -356,17 +362,19 @@ class Centipede:
                 if info.has_key('regex') and \
                    all(isinstance(x, basestring) for x in v):
 
-                    v = list()
+                    t = list()
                     for x in v:
                         match = re.findall(info['regex'], x)
 
                         if match:
-                            v.append(match[0] if match else None)
+                            t.append(match[0] if match else None)
                         else:
-                            v.append(self._null)
+                            t.append(self._null)
+                    
+                    v = t
 
                 # print v
-                self._log(3, '[{key}] Value: {value}'.format(
+                self._log(3, '[{key}] value: {value}'.format(
                                key = key,
                                value = str(v)
                              ), indent=1)
