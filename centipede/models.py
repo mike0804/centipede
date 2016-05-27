@@ -11,6 +11,7 @@ from lxml import html, etree
 
 from .exceptions import JobError, ModuleError
 from .job import CentipedeJob
+from .utils import slugify_filename
 
 from selenium import webdriver
 import selenium.webdriver.support.ui as ui
@@ -205,6 +206,7 @@ class Centipede:
 
         data = list()
 
+        part = False
         while (not stop):
             url, html_source = self._send_request(
                                  http_rules.get('method', 'GET'),
@@ -219,6 +221,18 @@ class Centipede:
             root = html.fromstring(html_source)
 
             data += self.get_data(root)
+            
+            if len(data) > 1000:
+                self._log(1, 'Over 1,000 records, dumping the data.')
+                
+                if not part:
+                    part = 1
+                
+                self.dump_data(data, part)
+                data = list()
+                part += 1
+            
+            
             self.dump_new_jobs(root)
 
             # If page is defined, increase one. Continue until stop condition is matched
@@ -230,7 +244,8 @@ class Centipede:
 
             self._delay_request()
 
-        self.dump_data(data)
+        self._log(1, 'Job done, dumping the data.')
+        self.dump_data(data, part)
         return
 
     def close_job(self):
@@ -274,15 +289,20 @@ class Centipede:
         self._logger.close()
         pass
 
-    def dump_data(self, data):
-        self._log(1, 'Job done, dumping the data.')
-
-        fname = '{name}.{ext}'.format(
-                  name = self.current_job.url \
-                          .replace('http://', '') \
-                          .replace('/', '_'),
-                  ext = 'json',
-                )
+    def dump_data(self, data, part=False):
+        name = slugify_filename(self.current_job.url)
+        
+        if part:
+            fname = '{name}.part{part}.{ext}'.format(
+                      part = part,
+                      name = name,
+                      ext  = 'json',
+                    )
+        else:
+            fname = '{name}.{ext}'.format(
+                      name = name,
+                      ext  = 'json',
+                    )
 
         fpath = os.path.join(self._dir, fname)
 
