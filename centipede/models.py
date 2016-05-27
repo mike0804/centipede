@@ -129,9 +129,32 @@ class Centipede:
         return req.prepare()
 
     def _send_request(self, method, params, headers):
-        res  = self.session \
-                   .send(self._prepare_request(method, params, headers))
-        # TODO: Handle response status code, raise exceptions
+        attempts = 0
+        delay_mins = [1, 5, 10, 30, 60]
+        
+        while True:
+            try:
+                res = self.session \
+                          .send(self._prepare_request(method, params, headers))
+                # TODO: Handle response status code, raise exceptions
+            except requests.exceptions.ConnectionError as e:
+                if attempts < 5:
+                    self._log(1, '[{error_type}] {msg}'.format(
+                                   error_type = type(e).__name__,
+                                   msg = e.msg,
+                                 ))
+                    self._log(1, '[{error_type}] sleep {mins} mins..'.format(
+                                   error_type = type(e).__name__,
+                                   mins = delay_mins[attempts]
+                                 ))
+                    time.sleep(delay_mins[attempts]*60)
+                    attempts += 1
+                    continue
+                else:
+                    raise
+                    # TODO: Handle complete abort
+            else:
+                break
 
         return res.url, res.content
 
