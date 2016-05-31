@@ -261,7 +261,7 @@ class Centipede:
             # If page is defined, increase one. Continue until stop condition is matched
             if paging:
                 key = paging.get('key', 'page')
-                params[key] += 1
+                params[key] += paging.get('increment', 1)
 
             stop = self._is_job_done(root)
 
