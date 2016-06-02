@@ -107,7 +107,7 @@ class Centipede:
                     message = msg,
                   )
             self._logger.write(log)
-            
+
             # self._logs.append(log)
 
         # if len(self._logs) >= 20:
@@ -131,17 +131,24 @@ class Centipede:
     def _send_request(self, method, params, headers):
         attempts = 0
         delay_mins = [1, 5, 10, 30, 60]
-        
+
         while True:
             try:
-                res = self.session \
-                          .send(self._prepare_request(method, params, headers))
+                res = self.session.send(
+                        self._prepare_request(method, params, headers),
+                        timeout = 30
+                      )
+
+                self._log(2, '{url} ({time}s)'.format(
+                               url = res.url,
+                               time = res.elapsed.total_seconds()
+                             ))
                 # TODO: Handle response status code, raise exceptions
-            except requests.exceptions.ConnectionError as e:
+            except requests.exceptions.RequestException as e:
                 if attempts < 5:
                     self._log(1, '[{error_type}] {msg}'.format(
                                    error_type = type(e).__name__,
-                                   msg = e.msg,
+                                   msg = str(e),
                                  ))
                     self._log(1, '[{error_type}] sleep {mins} mins..'.format(
                                    error_type = type(e).__name__,
@@ -173,7 +180,7 @@ class Centipede:
             job = jobs.pop(0)
 
             splits = job.strip().split("\t")
-            
+
             try:
                 if len(splits) < 2:
                     raise JobError(JobError.INVALID_FORMAT, job)
@@ -186,7 +193,7 @@ class Centipede:
                     j.module = self._load_module(module_name)
 
                     self.current_job = j
-                    
+
                     # print j.url, j.module
 
                     self._log(1, 'module: {module}, URL: {url}'.format(
@@ -195,7 +202,7 @@ class Centipede:
                               ))
 
                     return True
-            
+
             except (JobError, ModuleError) as e:
                 self._log(1, '[{error_type}] {msg}'.format(
                                error_type = type(e).__name__,
@@ -206,7 +213,7 @@ class Centipede:
         self._log(1, 'No more jobs.')
         return False
 
-        
+
 
     def do_job(self):
         self._log(1, 'Job started.')
@@ -237,25 +244,24 @@ class Centipede:
                                  headers
                                )
 
-            self._log(2, url)
             self._last_request_url  = url
             self._last_request_time = time.time()
 
             root = html.fromstring(html_source)
 
             data += self.get_data(root)
-            
+
             if len(data) > 1000:
                 self._log(1, 'Over 1,000 records, dumping the data.')
-                
+
                 if not part:
                     part = 1
-                
+
                 self.dump_data(data, part)
                 data = list()
                 part += 1
-            
-            
+
+
             self.dump_new_jobs(root)
 
             # If page is defined, increase one. Continue until stop condition is matched
@@ -314,7 +320,7 @@ class Centipede:
 
     def dump_data(self, data, part=False):
         name = slugify_filename(self.current_job.url)
-        
+
         if part:
             fname = '{name}.part{part}.{ext}'.format(
                       part = part,
@@ -413,7 +419,7 @@ class Centipede:
                             t.append(match[0] if match else None)
                         else:
                             t.append(self._null)
-                    
+
                     v = t
 
                 # print v
@@ -440,7 +446,7 @@ class Centipede:
             m = importlib.import_module(
                   'centipede.module.{name}'.format(name=module_name)
                 )
-            
+
             # print m
 
         except ImportError as e:

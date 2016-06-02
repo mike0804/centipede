@@ -44,9 +44,10 @@ def main(argv = None):
              "job=",            # -f
              "compress",        # -c
              "help",            # -h
+             "resume=",         # -r
             ]
 
-        opts, args = getopt.getopt(argv, "o:f:hc", l)
+        opts, args = getopt.getopt(argv, "o:f:hcr:", l)
     except getopt.GetoptError as e:
         # print help information and exit:
         # print str(e)
@@ -60,6 +61,8 @@ def main(argv = None):
     selenium = False
     file = '' if not args else args[0]
     archive = False
+    task = None
+    resume_task = False
 
     for opt, val in opts:
         if opt in ("-o", "--dir", "--directory"):
@@ -74,17 +77,23 @@ def main(argv = None):
             file = val
         elif opt in ("-c", "--compress"):
             archive = True
+        elif opt in ("-r", "--resume"):
+            task = val
+            resume_task = True
         elif opt in ("-h", "--help"):
             usage()
             sys.exit(2)
         else:
             assert False, "unhandled option"
 
-    if not os.path.isfile(file):
+    if not os.path.isfile(file) and not resume_task:
         usage()
         sys.exit(2)
 
-    task = file + '.' + time.strftime("%Y-%m-%d", time.gmtime())
+    if resume_task:
+        pass
+    else:
+        task = file + '.' + time.strftime("%Y-%m-%d", time.gmtime())
 
     try:
         cur_dir, tmp_dir, log_dir, output_dir = get_dirs()
@@ -93,7 +102,8 @@ def main(argv = None):
         jobs = os.path.join(cur_dir, task + '.jobs')
         logfile = os.path.join(log_dir, task + '.log')
 
-        shutil.copy(file, jobs)
+        if not resume_task:
+            shutil.copy(file, jobs)
 
         cl = centipede.Centipede(
                jobs, \
