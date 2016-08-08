@@ -107,11 +107,11 @@ def main(argv = None):
 
         cl = centipede.Centipede(
                jobs, \
+               selenium=selenium, \
                debug=debug, \
                debug_level=debug_level, \
                dir=task_dir, \
-               logfile=logfile, \
-               selenium=selenium
+               logfile=logfile                   
              )
 
         cl.run()
@@ -133,6 +133,7 @@ def main(argv = None):
         print str(e)
         sys.exit(2)
     except Exception as e:
+        print str(e)    
         raise
         sys.exit(2)
     finally:

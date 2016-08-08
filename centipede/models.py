@@ -14,6 +14,7 @@ from .job import CentipedeJob
 from .utils import slugify_filename
 
 from selenium import webdriver
+import selenium
 import selenium.webdriver.support.ui as ui
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -33,8 +34,6 @@ class Centipede:
         self._dir = 'data'
 
         self._delay = 6
-        self._last_request_time = 0
-        self._last_request_url = None
 
         # Define the empty value for all column
         self._null = None
@@ -102,59 +101,65 @@ class Centipede:
 
         if self._log_level >= level:
             log = '{time}  {indent}{message}\n'.format(
-                    indent = ('  ' * indent),
-                    time = time.strftime('%Y-%m-%d %H:%M:%S'),
+                    indent  = ('  ' * indent),
+                    time    = time.strftime('%Y-%m-%d %H:%M:%S'),
                     message = msg,
                   )
             self._logger.write(log)
 
-            # self._logs.append(log)
+    ##
+    # Funcitons for request
 
-        # if len(self._logs) >= 20:
-            # self._dump_logs()
+    def prepare_request(self, method, url, params, headers):
+        r = requests.Request(
+              method,
+              url,
+              params=params,
+              headers=headers
+            )
+        return r.prepare()
 
-    def _dump_logs(self):
-        with open(self._logfile, 'a+') as fout:
-            fout.writelines(self._logs)
-
-        del self._logs[:]
-
-    def _prepare_request(self, method, params, headers):
-        req  = requests.Request(
-                 method,
-                 self.current_job.url,
-                 params=params,
-                 headers=headers
-               )
-        return req.prepare()
-
-    def _send_request(self, method, params, headers):
+    def send_request(self, method, url, params, headers):
         attempts = 0
-        delay_mins = [1, 5, 10, 30, 60]
+        incr_delays = [1, 5, 10, 30, 60] # in minutes
 
         while True:
             try:
-                res = self.session.send(
-                        self._prepare_request(method, params, headers),
-                        timeout = 30
-                      )
+                response = self.session.send(
+                             self.prepare_request(
+                               method,
+                               url,
+                               params,
+                               headers
+                             ),
+                             timeout = 30
+                           )
+                self.last_request = {'url': response.url, 'timestamp': time.time()}
 
-                self._log(2, '{url} ({time}s)'.format(
-                               url = res.url,
-                               time = res.elapsed.total_seconds()
-                             ))
+                self._log(2,
+                  '{url} ({time}s)'.format(
+                    url  = response.url,
+                    time = response.elapsed.total_seconds()
+                  )
+                )
                 # TODO: Handle response status code, raise exceptions
             except requests.exceptions.RequestException as e:
+                minutes = incr_delays[attempts]
+
                 if attempts < 5:
-                    self._log(1, '[{error_type}] {msg}'.format(
-                                   error_type = type(e).__name__,
-                                   msg = str(e),
-                                 ))
-                    self._log(1, '[{error_type}] sleep {mins} mins..'.format(
-                                   error_type = type(e).__name__,
-                                   mins = delay_mins[attempts]
-                                 ))
-                    time.sleep(delay_mins[attempts]*60)
+                    self._log(0,
+                      '[{errtype}] {msg}'.format(
+                        msg     = str(e),
+                        errtype = type(e).__name__,
+                      )
+                    )
+                    self._log(0,
+                      '[{errtype}] sleep {minutes} minutes..'.format(
+                        errtype = type(e).__name__,
+                        minutes = minutes,
+                      )
+                    )
+                    time.sleep(minutes*60)
                     attempts += 1
                     continue
                 else:
@@ -163,12 +168,10 @@ class Centipede:
             else:
                 break
 
-        return res.url, res.content
+        return response.url, response.content
 
-    def _delay_request(self):
-        diff = time.time() - self._last_request_time
-        if (diff < self._delay):
-            time.sleep(int(round((self._delay - diff), 0)))
+    ##
+    # Funcitons for main flow
 
     def next_job(self):
         self._log(1, 'Finding next job.')
@@ -190,116 +193,96 @@ class Centipede:
 
                     j = CentipedeJob()
                     j.url = url
-                    j.module = self._load_module(module_name)
-
+                    j.module = self.load_module(module_name)
                     self.current_job = j
 
                     # print j.url, j.module
 
-                    self._log(1, 'module: {module}, URL: {url}'.format(
-                                   url = url,
-                                   module = module_name,
-                              ))
+                    self._log(1,
+                      'module: {module}, URL: {url}'.format(
+                        url = url,
+                        module = module_name,
+                      )
+                    )
 
                     return True
 
             except (JobError, ModuleError) as e:
-                self._log(1, '[{error_type}] {msg}'.format(
-                               error_type = type(e).__name__,
-                               msg = e.msg
-                             ))
+                self._log(1,
+                  '[{errtype}] {msg}'.format(
+                    errtype = type(e).__name__,
+                    msg = e.msg
+                  )
+                )
                 continue
 
         self._log(1, 'No more jobs.')
         return False
 
-
-
     def do_job(self):
         self._log(1, 'Job started.')
 
         http_rules = self.current_job.module.http_rules
-        stop = False
+        part = 0
+        root = None
 
+        params  = http_rules.get('params', {})
         headers = {
-          'Cache-Control': 'no-cache',
           'User-Agent': self._user_agent,
+          'Cache-Control': 'no-cache',
           'DNT': 1,
         }
-        params = http_rules.get('params', {})
 
-        paging = http_rules.get('page')
-        if paging:
-            key = paging.get('key', 'page')
-            val = paging.get('value', 1)
-            params[key] = int(val)
+        paging = None
+        if 'page' in http_rules:
+            paging_rules = http_rules['page']
+            paging = Paging(
+                      paging_rules.get('key', 'page'),
+                      paging_rules.get('value', 1),
+                      paging_rules.get('increment', 1)
+                    )
+            params[paging.key] = paging.page()
 
         data = list()
-
-        part = False
-        while (not stop):
-            url, html_source = self._send_request(
+        while (not self.is_job_done(root)):
+            url, html_source = self.send_request(
                                  http_rules.get('method', 'GET'),
+                                 self.current_job.url,
                                  params,
                                  headers
                                )
 
-            self._last_request_url  = url
-            self._last_request_time = time.time()
-
             root = html.fromstring(html_source)
 
-            data += self.get_data(root)
+            data.extend(self.get_data(root))
+            if len(data) >= 1000:
+                self._log(1, 'Over 1k records, dumping the data.')
 
-            if len(data) > 1000:
-                self._log(1, 'Over 1,000 records, dumping the data.')
-
-                if not part:
-                    part = 1
+                if not part: part = 1
 
                 self.dump_data(data, part)
                 data = list()
                 part += 1
 
-
             self.dump_new_jobs(root)
 
             # If page is defined, increase one. Continue until stop condition is matched
-            if paging:
-                key = paging.get('key', 'page')
-                params[key] += paging.get('increment', 1)
+            if paging: params[paging.key] = paging.next_page()
 
-            stop = self._is_job_done(root)
-
-            self._delay_request()
+            self.delay()
 
         self._log(1, 'Job done, dumping the data.')
         self.dump_data(data, part)
         return
 
     def close_job(self):
-        with open(self.job_file, 'r') as fin:
-            data = fin.read().splitlines(True)
-        with open(self.job_file, 'w') as fout:
-            fout.writelines(data[1:])
+        with open(self.job_file, 'r+') as fp:
+            jobs = fp.read().splitlines(True)
+            fp.truncate(0)
+            fp.seek(0)
+            fp.writelines(jobs[1:])
 
         self._log(1, 'Job closed.')
-
-    def _is_job_done(self, root):
-        condition = self.current_job \
-                        .module \
-                        .http_rules \
-                        .get('stop')
-
-        if isinstance(condition, dict):
-            # TODO
-            raise NotImplementedError()
-        elif hasattr(condition, '__call__'):
-            stop = condition(root)
-        else:
-            stop = True
-
-        return stop
 
     def run(self):
         self._log(0, 'Centipede starts!')
@@ -307,38 +290,46 @@ class Centipede:
 
         while (self.next_job()):
             self.do_job()
-            # self.dump_new_jobs()
             self.close_job()
-            # self.current_job = self.next_job()
 
         self.close()
 
     def close(self):
-        # self._dump_logs()
         self._logger.close()
-        pass
+
+    def delay(self):
+        diff = time.time() - self.last_request['timestamp']
+        if (diff < self._delay):
+            time.sleep(int(round((self._delay - diff), 0)))
+
+    def load_module(self, module_name):
+        module_fullname = 'centipede.module.' + module_name
+
+        try:
+            import importlib
+            module = importlib.import_module(module_fullname)
+        except ImportError as e:
+            raise ModuleError(ModuleError.MODULE_NOT_FOUND, module_name)
+
+        return module
 
     def dump_data(self, data, part=False):
         name = slugify_filename(self.current_job.url)
 
         if part:
-            fname = '{name}.part{part}.{ext}'.format(
-                      part = part,
-                      name = name,
-                      ext  = 'json',
-                    )
+            filename = '{name}.part{part}.json'.format(
+                         name = name,
+                         part = part,
+                       )
         else:
-            fname = '{name}.{ext}'.format(
-                      name = name,
-                      ext  = 'json',
-                    )
+            filename = '{name}.json'.format(name = name,)
 
-        fpath = os.path.join(self._dir, fname)
+        filepath = os.path.join(self._dir, filename)
 
-        with open(fpath, 'w') as fout:
+        with open(filepath, 'w') as fout:
             json.dump(data, fout)
 
-        self._log(1, "%d records are dumped to '%s'" % (len(data), fpath))
+        self._log(1, "%d records are dumped to '%s'" % (len(data), filepath))
 
     def dump_new_jobs(self, root):
         if hasattr(self.current_job.module, 'new_jobs'):
@@ -347,38 +338,38 @@ class Centipede:
             jobs = list()
             for nj in self.current_job.module.new_jobs:
                 for e in root.xpath(nj['path']):
-                    url = urlparse.urljoin(
-                            nj.get('prefix', self._last_request_url),
-                            e.attrib['href'],
-                          )
+                    url_prefix = nj.get('prefix', self.last_request['url'])
+                    url = urlparse.urljoin(url_prefix, e.attrib['href'])
+
                     job = '{url}{delimiter}{module}\n'.format(
-                            module = nj['module'],
+                            module    = nj['module'],
                             delimiter = '\t',
-                            url = url,
+                            url       = url
                           )
 
                     jobs.append(job)
 
                     self._log(3,
                       'module: {module}, URL: {url}'.format(
-                        url = url,
+                        url    = url,
                         module = nj['module'],
-                      ), indent=1)
-
+                      ),
+                      indent=1
+                    )
 
             with open(self.job_file, 'a+') as fout:
                 fout.writelines(jobs)
 
             self._log(2, '%d new jobs are added.' % len(jobs))
 
-    def get_elements_attrib(self, elements, attrib):
-        if attrib == 'text':
-            return elements
-            # v = [x.text for x in ee]
-        elif attrib == 'html':
-            return map(etree.tostring, elements)
-        else:
-            return [e.attrib.get(attrib, self._null) for e in elements]
+    def get_data(self, root):
+        elements = self.get_elements(root)
+        self._log(2, '%d elements are found.' % len(elements))
+
+        return self.get_elements_data(elements)
+
+    def get_elements(self, root):
+        return root.xpath(self.current_job.module.elements.get('path'))
 
     def get_elements_data(self, elements):
         self._log(3, 'Extracting data from elements:')
@@ -388,13 +379,15 @@ class Centipede:
         data = list()
         for e in elements:
             d = {}
-            d['timestamp'] = self._last_request_time
 
             for key, info in module.elements['attributes'].iteritems():
-                self._log(3, '[{key}] info: {info}'.format(
-                               key = key,
-                               info = str(info)
-                             ), indent=1)
+                self._log(3,
+                  '[{key}] info: {info}'.format(
+                    key  = key,
+                    info = str(info)
+                  ),
+                  indent=1
+                )
 
                 ee = e.xpath(info.get('path', '.'))
                 if len(ee) == 0:
@@ -404,55 +397,66 @@ class Centipede:
                 if info.has_key('function'):
                     v = map(info['function'], ee)
                 elif info.has_key('attrib'):
-                    v = self.get_elements_attrib(ee, info['attrib'])
+                    v = self.get_elements_data_from_attrib(ee, info['attrib'])
                 else:
                     v = ee
 
-                if info.has_key('regex') and \
-                   all(isinstance(x, basestring) for x in v):
+                if info.has_key('regex') and all(isinstance(x, basestring) for x in v):
 
-                    t = list()
+                    vv = list()
                     for x in v:
                         match = re.findall(info['regex'], x)
 
                         if match:
-                            t.append(match[0] if match else None)
+                            vv.append(match[0])
                         else:
-                            t.append(self._null)
+                            vv.append(self._null)
 
-                    v = t
-
-                # print v
-                self._log(3, '[{key}] value: {value}'.format(
-                               key = key,
-                               value = str(v)
-                             ), indent=1)
+                    v = vv
 
                 d[key] = v
+
+                self._log(3,
+                  '[{key}] value: {value}'.format(
+                    key   = key,
+                    value = str(v)
+                  ),
+                  indent=1
+                )
+
+            # Add the timestamp
+            d['timestamp'] = self.last_request['timestamp']
 
             data.append(d)
 
         return data
 
-    def get_data(self, root):
-        elements = root.xpath(self.current_job.module.elements['path'])
-        self._log(2, '%d elements are found.' % len(elements))
+    def get_elements_data_from_attrib(self, elements, attrib):
+        if attrib == 'text':
+            return elements
+        elif attrib == 'html':
+            return map(etree.tostring, elements)
+        else:
+            return [e.attrib.get(attrib, self._null) for e in elements]
 
-        return self.get_elements_data(elements)
+    def is_job_done(self, root):
+        if root is None:
+            return False
+        else:
+            condition = self.current_job \
+                            .module \
+                            .http_rules \
+                            .get('stop', True)
 
-    def _load_module(self, module_name):
-        try:
-            import importlib
-            m = importlib.import_module(
-                  'centipede.module.{name}'.format(name=module_name)
-                )
+            if isinstance(condition, dict):
+                # TODO
+                raise NotImplementedError()
+            elif hasattr(condition, '__call__'):
+                stop = condition(root)
+            else:
+                stop = True
 
-            # print m
-
-        except ImportError as e:
-            raise ModuleError(ModuleError.MODULE_NOT_FOUND, module_name)
-
-        return m
+            return stop
 
 
 class Centipede_Selenium(Centipede):
@@ -462,40 +466,131 @@ class Centipede_Selenium(Centipede):
 
         self.webdrive  = webdriver.Firefox()
 
-    def _send_request_by_selenium(self, params, headers):
-        self.webdrive.get(self._prepare_request('GET', params, headers).url)
+    def send_request_by_selenium(self, url, params, headers):
+        attempts = 0
+        incr_delays = [1, 5, 10, 30, 60]
 
-        wait = ui.WebDriverWait(self.webdrive, 3600)
-        e = wait.until(
-            EC.presence_of_element_located(
-                (By.XPATH,
-                 self.current_job.module.http_rules['element'])
-                 )
-            )
-        # TODO: Handle response status code, raise exceptions
+        while True:
+            try:
+                self.webdrive.get(
+                  self.prepare_request(
+                    'GET', 
+                    url, 
+                    params, 
+                    headers
+                  ).url
+                )
+
+                wait = ui.WebDriverWait(self.webdrive, 300)
+                e = wait.until(
+                    EC.presence_of_element_located(
+                        (By.XPATH,
+                         self.current_job.module.http_rules['element'])
+                         )
+                    )
+                
+                self.last_request = {'url': self.webdrive.current_url, 'timestamp': time.time()}
+
+            except selenium.common.exceptions.TimeoutException as e:
+                print 'aaa'
+                minutes = incr_delays[attempts]
+                
+                if attempts < 5:
+                    self._log(0,
+                      '[{errtype}] {msg}'.format(
+                        msg     = str(e),
+                        errtype = type(e).__name__,
+                      )
+                    )
+                    self._log(0,
+                      '[{errtype}] sleep {minutes} minutes..'.format(
+                        errtype = type(e).__name__,
+                        minutes = minutes,
+                      )
+                    )
+                    time.sleep(minutes*60)
+                    attempts += 1
+                    continue
+                else:
+                    raise
+            else:
+                break
+
         return self.webdrive.current_url, self.webdrive.page_source
 
-    def _send_request_by_requests(self, method, params, headers):
-        res  = self.session.send(self._prepare_request(
-                                   method.upper(),
-                                   params,
-                                   headers
-                                ))
-        # TODO: Handle response status code, raise exceptions
-        return res.url, res.content
+    def send_request_by_requests(self, method, url, params, headers):
+        attempts = 0
+        incr_delays = [1, 5, 10, 30, 60] # in minutes
 
-    def _prepare_request(self, method, params, headers):
-        req  = requests.Request(
-                 method,
-                 self.current_job.url,
-                 params=params,
-                 headers=headers
-               )
-        return req.prepare()
+        while True:
+            try:
+                response = self.session.send(
+                             self.prepare_request(
+                               method,
+                               url,
+                               params,
+                               headers
+                             ),
+                             timeout = 30
+                           )
+                self.last_request = {'url': response.url, 'timestamp': time.time()}
 
-    def _send_request(self, method, params, headers):
-        if method.lower() == 'selenium':
-            return self._send_request_by_selenium(params, headers)
-        else:
-            return self._send_request_by_requests(method, params, headers)
+                self._log(2,
+                  '{url} ({time}s)'.format(
+                    url  = response.url,
+                    time = response.elapsed.total_seconds()
+                  )
+                )
+                # TODO: Handle response status code, raise exceptions
+            except requests.exceptions.RequestException as e:
+                minutes = incr_delays[attempts]
+
+                if attempts < 5:
+                    self._log(0,
+                      '[{errtype}] {msg}'.format(
+                        msg     = str(e),
+                        errtype = type(e).__name__,
+                      )
+                    )
+                    self._log(0,
+                      '[{errtype}] sleep {minutes} minutes..'.format(
+                        errtype = type(e).__name__,
+                        minutes = minutes,
+                      )
+                    )
+                    time.sleep(minutes*60)
+                    attempts += 1
+                    continue
+                else:
+                    raise
+                    # TODO: Handle complete abort
+            else:
+                break
+
+        return response.url, response.content
+
+    def send_request(self, method, url, params, headers):
+        # if method.lower() == 'selenium':
+            # return self.send_request_by_selenium(url, params, headers)
+        # else:
+            # return self.send_request_by_requests(method, url, params, headers)
+        return self.send_request_by_selenium(url, params, headers)
+
+class Paging(object):
+
+    def __init__(self, key, start=1, increment=1):
+        self.key = key
+        self.current_page = start
+        self.increment = increment
+
+    def page(self):
+        return self.current_page
+
+    def next_page(self):
+        self.current_page += self.increment
+        return self.page()
+
+    def prev_page(self):
+        self.current_page -= self.increment
+        return self.page()
 
