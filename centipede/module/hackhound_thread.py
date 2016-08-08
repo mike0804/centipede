@@ -61,6 +61,6 @@ elements = {
 
 new_jobs = [{
     'path'  : '//*[@id="forum_table"]/tr[contains(@class,"__topic")]/td[contains(@class,"col_f_content")]/h4/a',
-    'module': 'hackhound.question',
+    'module': 'hackhound_question',
     #'prefix': 'http://hackhound.org/forums/',
 }]

@@ -65,11 +65,11 @@ elements = {
 new_jobs = [
 {
     'path'  : '//*[contains(@summary,"Forums within the category")]/tr/td[@class="col_c_forum"]/../td[contains(@class,"col_c_forum")]/h4/a',
-    'module': 'hackhound.thread',
+    'module': 'hackhound_thread',
     #'prefix': 'http://hackhound.org/forums/',
 },
 {
     'path'  : '//*[contains(@summary,"Forums within the category")]/tr/td[@class="col_c_forum"]/../td[contains(@class,"col_c_forum")]/ol/li/a',
-    'module': 'hackhound.thread',
+    'module': 'hackhound_thread',
     #'prefix': 'http://hackhound.org/forums/',
 }]
